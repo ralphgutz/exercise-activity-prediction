@@ -1,0 +1,156 @@
+---
+title: "Exercise Activity Prediction"
+author: "Raphael Gutierrez"
+date: "May 8, 2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+### Data
+The training data for this project are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har. 
+
+
+## Data Preparation
+
+### Importing Packages
+This loads the necessary R packages for this project. Caret for classification training and models, mainly for Decision Tree, randomForest for Random Forest model, ggplot2 for exploratory analysis, and rattle for tree visualization.
+
+```{r echo=FALSE}
+library(caret)
+library(ggplot2)
+library(rattle)
+library(randomForest)
+```
+
+
+### Downloading Data
+The training and testing data required for this project are downloaded in this section.
+
+```{r}
+trainingFile <- "pml-training.csv"
+testingFile <- "pml-testing.csv"
+
+download.file("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", trainingFile)
+download.file("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", testingFile)
+```
+
+
+### Data Preprocessing
+Preprocessing is used to clean-up the raw data. All N/A and empty values are omitted.
+
+Subsets will be created to remove unnecessary columns that might affect the prediction of the models. These columns are user_name, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp, new_window, and num_window.
+
+``` {r}
+training <- read.csv(trainingFile, na.strings=c("NA","#DIV/0!", ""))
+testing <- read.csv(testingFile, na.strings=c("NA", "#DIV/0!", ""))
+
+training <- training[,colSums(is.na(training)) == 0]
+testing <- testing[,colSums(is.na(testing)) == 0]
+
+training <- training[,-c(1:7)]
+testing <- testing[,-c(1:7)]
+```
+
+
+### Train-Test Split
+Because pml-testing.csv will be used to test the accuracy of the models, pml-training.csv will serve as training and testing sets. Because of this, it is separated into 0.70 (70%) training and 0.30 (30%) testing data.
+
+```{r}
+splittedData <- createDataPartition(y=training$classe, p=0.7, list=FALSE)
+sTraining <- training[splittedData,] 
+sTesting <- training[-splittedData,]
+```
+
+
+### Exploratory Analysis
+The data is composed of five (5) classifications. The bar plot shows the distribution of uniquely identified data inside the classe column.
+
+```{r}
+qplot(classe, main="Distribution of classe variable", xlab="classe values", ylab="Frequency", data=sTraining)
+```
+
+
+## Prediction Models
+
+### Decision Tree
+Decision Tree algorithm will be used to predict the outcome of the data.
+
+```{r}
+DT_model <- train(classe ~ ., data=sTraining, method="rpart")
+
+DT_model
+```
+
+```{r}
+DT_model$finalModel
+```
+
+```{r}
+fancyRpartPlot(DT_model$finalModel)
+```
+
+
+```{r}
+pred_DT <- predict(DT_model, newdata=sTesting, typce="class")
+```
+
+
+### Confusion Matrix (Decision Tree)
+The following confusion matrix shows the errors and overall statistics of the prediction model.
+
+```{r}
+confusionMatrix(pred_DT, as.factor(sTesting$classe))
+```
+
+
+### Random Forest
+Random Forest algorithm will be used to predict the outcome of the data.
+
+
+```{r}
+RF_model <- randomForest(as.factor(classe) ~ ., data=sTraining, method="class")
+
+RF_model
+```
+
+```{r}
+pred_RF <- predict(RF_model, newdata=sTesting, type="class")
+```
+
+
+### Confusion Matrix (Random Forest)
+The following confusion matrix shows the errors and overall statistics of the prediction model.
+
+```{r}
+confusionMatrix(pred_RF, as.factor(sTesting$classe))
+```
+
+
+## Conclusion
+
+### Result
+Considering the confusion matrices and the results of both Decision Tree and Random Forest models, the latter produced an accuracy of 0.993 (95% CI of 0.9906, 0.995) compared to 0.4989 (95% CI of 0.486, 0.5118) of the former. For this project, the Random Forest algorithm is chosen.
+
+The prediction for the pml-testing.csv will be as follows:
+
+```{r}
+prediction <- predict(RF_model, newdata=testing, type="class")
+
+prediction
+```
+
+
+### Out-of-sample Error
+Out-of-sample error is a measure of how accurately an algorithm is able to predict outcome values for previously unseen data. This is calculated as 1 - accuracy of the prediction model. Unlike the Decision Tree which produced a not-so-good accuracy for this project, the Random Forest did well with an accuracy of 0.993 which resulted to a minimal out-of-sample error. This means that for every prediction, there is a below 1% chance of the data getting misclassified. 
